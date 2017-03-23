@@ -8,7 +8,6 @@ import re
 
 re_background = re.compile(r'background:\s*([^;]+);')
 
-
 def strip_citations(elem, copy=True):
     """Strip citation links from element."""
     if copy: elem = _copy.copy(elem)
@@ -16,7 +15,7 @@ def strip_citations(elem, copy=True):
     for r in elem.select('.reference'):
         r.extract()
 
-    for r in elem.select('sup'):
+    for r in elem.find_all('sup'):
         r.extract()
 
     return elem
@@ -30,9 +29,17 @@ def cleanup_text(text):
 class Cell:
     def __init__(self, elem):
         assert isinstance(elem, Tag)
+        anchor = elem.a
+        self.href, self.link_title = (
+            (anchor.attrs.get('href'), anchor.attrs.get('title'))
+            if anchor is not None else (None, None))
+
+
         elem = strip_citations(elem)
         self.elem, self.text, self.colspan, self.rowspan, self.is_header = (
-            elem, cleanup_text(strip_citations(elem).text), int(elem.attrs.get('colspan', '1')), int(elem.attrs.get('rowspan', '1')), elem.name == 'th')
+            elem, cleanup_text(strip_citations(elem).text),
+            int(elem.attrs.get('colspan', '1')), int(elem.attrs.get('rowspan', '1')),
+            elem.name == 'th')
         self.colour = None
         style = elem.attrs.get('style')
         if style:
@@ -40,13 +47,15 @@ class Cell:
             if match:
                 self.colour = match.groups(1)[0]
 
-        if self.colour and not self.text: self.text = self.colour
-
     def __repr__(self):
-        return "|{!r}{}{}{}|".format(
+        return "|{!r}{}{}{}{}{}|".format(
             self.text,
             "({})".format(self.colour) if self.colour else "",
-            repr((self.colspan, self.rowspan)) if self.colspan > 1 or self.rowspan > 1 else "", ["", "*"][bool(self.is_header)])
+            repr((self.colspan, self.rowspan))
+            if self.colspan > 1 or self.rowspan > 1 else "",
+            ["", "*"][bool(self.is_header)],
+            " -> " + self.href if self.href is not None else "",
+            " : " + repr(self.link_title) if self.link_title is not None else "")
 
 
 class Table:
@@ -80,10 +89,11 @@ class Table:
             return "<_Headers transpose={} header_count={} headers={}>".format(self.transpose, self.header_count, self.headers)
 
 
-    def __init__(self, elem):
+    def __init__(self, elem, header_all=False):
         assert isinstance(elem, Tag)
         assert elem.name == 'table'
         self.elem = elem
+        self.header_check = [any, all][header_all]
         self.caption = elem.caption
         self._table_cells = [
             [td for td in tr.children if isinstance(td, Tag) and td.name in ('td', 'th')]
@@ -116,19 +126,21 @@ class Table:
         return {k: {k1: func(v1) for k1, v1 in v.items()} for k, v in self._cells.items()}
 
     def is_header_row(self, r):
-        return any(c is not None and c.is_header for c in self._cells[r].values())
+        return self.header_check(c is not None and c.is_header for c in self._cells[r].values())
 
     def is_header_col(self, r):
-        return any(row[r] is not None and row[r].is_header for row in self._cells.values())
+        return self.header_check(row[r] is not None and row[r].is_header for row in self._cells.values())
 
     def __repr__(self):
         return "<Table n_rows={}, n_cols={}>".format(self.n_rows, self.n_cols)
 
-    def transpose(self, to_s=True, indexed=True, transpose=False):
+    def transpose(self, to_s=True, indexed=True, transpose=False, header=None):
         f = (lambda x: x.text if x is not None else None) if to_s else (lambda x: x)
         d = {}
         view = self.cols if transpose else self.rows
-        header = lambda h: ": ".join(y.text for y in h if y is not None)
+        if header is None:
+            header = lambda h: ": ".join(y.text for y in h if y is not None)
+
         for j, h in enumerate(view.headers):
             data = []
             for i in range(view.header_count, view.count):
@@ -138,12 +150,14 @@ class Table:
 
         return d
 
+    def __getitem__(self, p): return self._cells[p[0]][p[1]]
+
 
 class InfoBox:
     def __init__(self, elem):
         assert isinstance(elem, Tag)
         assert elem.name == 'table'
-        assert {'infobox', 'vevent'} <= set(elem.attrs.get('class'))
+        assert 'infobox' in set(elem.attrs.get('class'))
         tables = list(map(Table, elem.select('table')))
 
         self.tables = tables
@@ -171,6 +185,12 @@ class DocumentOutline:
         self.soup = soup
 
         self.children = list(soup.children)
+        self.children_hashes = [self._h(c) for c in self.children]
+
+        self.descendants_list = [
+            (tuple(c.descendants) if isinstance(c, Tag) else ()) for c in self.children]
+        self.descendants_hashes = [[self._h(d) for d in dl] for dl in self.descendants_list]
+
         heading_by_index = [None for i in range(len(self.children))]
         headings = {}
         cur_heading = None
@@ -179,12 +199,14 @@ class DocumentOutline:
                 try:
                     level = int(child.name[1:])
                     assert level > 0
+
+                    heading_by_index[i] = cur_heading
                     cur_heading = Heading(child, level)
                     headings[i] = cur_heading
                 except ValueError:
                     pass
-
-            heading_by_index[i] = cur_heading
+            else:
+                heading_by_index[i] = cur_heading
 
         self.heading_by_index = heading_by_index
         self.headings = headings
@@ -198,6 +220,30 @@ class DocumentOutline:
                 break
             yield self.children[j]
 
+    def get_heading(self, elem, level=None):
+        assert elem is not None
+        if level is not None: raise NotImplementedError()
+        he = self._h(elem)
+        res = [
+            (i, child) for i, (child, hc) in enumerate(zip(self.children, self.children_hashes))
+            if elem is child or (
+                he == hc and elem == child) or (isinstance(child, Tag) and (
+                elem in child or ( he in self.descendants_hashes[i] and elem in self.descendants_list[i])))
+        ]
+        if len(res) == 0: return None
+
+        index, _ = res[0]
+        #return index
+        return self.heading_by_index[index]
+
+    def _h(self, x):
+        if isinstance(x, Tag):
+            return self._hash_tag(x)
+        else:
+            return hash(x)
+
+    def _hash_tag(self, x):
+        return hash((x.name, len(x), hash(x.attrs.values())))
 
 test_table = """
 <table>

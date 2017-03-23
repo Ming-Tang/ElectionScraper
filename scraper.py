@@ -5,7 +5,7 @@ from collections import defaultdict
 from wiki_scraper import *
 import pprint
 import itertools as it
-import wikipedia
+import wikipedia_cached as wiki
 import pandas as pd
 
 pd.set_option('display.width', 640)
@@ -15,7 +15,7 @@ pd.set_option('display.width', 640)
 #    '1997', '1993', '1988', '1984', '1980']:
 year = '2015'
 while True:
-    page = wikipedia.page('Canadian Federal Election, ' + str(year))
+    page = wiki.page('Canadian Federal Election, ' + str(year))
     html = page.html()
     #r = requests.get('https://en.wikipedia.org/wiki/British_Columbia_general_election,_' + year)
 
