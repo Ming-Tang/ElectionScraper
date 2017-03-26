@@ -6,6 +6,11 @@ import copy as _copy
 import itertools as it
 import re
 
+__all__ = [
+    'strip_citations', 'cleanup_text', 'Cell', 'Table', 'InfoBox',
+    'Heading', 'DocumentOutline'
+]
+
 re_background = re.compile(r'background:\s*([^;]+);')
 
 def strip_citations(elem, copy=True):
@@ -34,11 +39,16 @@ class Cell:
             (anchor.attrs.get('href'), anchor.attrs.get('title'))
             if anchor is not None else (None, None))
 
+        def int1(x):
+            try:
+                return int(x)
+            except:
+                return int(re.sub(r'[^0-9]', "", x))
 
         elem = strip_citations(elem)
         self.elem, self.text, self.colspan, self.rowspan, self.is_header = (
             elem, cleanup_text(strip_citations(elem).text),
-            int(elem.attrs.get('colspan', '1')), int(elem.attrs.get('rowspan', '1')),
+            int1(elem.attrs.get('colspan', '1')), int1(elem.attrs.get('rowspan', '1')),
             elem.name == 'th')
         self.colour = None
         style = elem.attrs.get('style')
