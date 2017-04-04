@@ -1,6 +1,8 @@
 from collections import defaultdict
 import itertools as it
 
+#TODO handle by-elections
+
 standard_schema = {
     "Election": [
         ("election_id", "str", "id"),
@@ -39,7 +41,9 @@ standard_schema = {
         ("valid_ballots", "number"),
         ("turnout", "count"),
         ("turnout_percent", "percent"),
-        ("expense_limit", "number")
+        ("expense_limit", "number"),
+        ("is_by_election", "bool"),
+        ("by_election_date", "str")
     ],
 
     # Relationship between party and election
@@ -144,6 +148,7 @@ class Database:
         self.data[schema_name][key].add(vals, source)
 
     def declare(self, schema_name, source=None, **kwargs):
+        print("declare({!r}, source={!r}, **{!r})".format(schema_name, source, kwargs))
         assert schema_name in self.schema, "Schema not found: {}".format(schema_name)
 
         key, vals = self._validate(schema_name, kwargs)

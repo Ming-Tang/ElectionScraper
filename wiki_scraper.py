@@ -13,7 +13,7 @@ __all__ = [
 
 re_background = re.compile(r'background:\s*([^;]+);')
 
-def strip_citations(elem, copy=True):
+def strip_citations(elem, copy=False):
     """Strip citation links from element."""
     if copy: elem = _copy.copy(elem)
 

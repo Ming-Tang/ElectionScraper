@@ -29,9 +29,9 @@ logger = setup_logging()
 deltaPercent = '\u2206%'
 
 re_province = re.compile(r"^([^-]+)(\s*-\s*\d+\s+seats?)?$")
-re_years = re.compile(r"^\s*List.*Canadian.*,?\s+(\d+)\W(\d+)\s*$")
+#re_years = re.compile(r"^\s*List.*Canadian.*,?\s+(\d+)\W(\d+)\s*$")
 re_year = re.compile(r', (\d\d\d\d)')
-re_federal_election = re.compile(r'Canad(?:a|ian)\s+federal\D+(\d\d\d\d)')
+re_federal_election = re.compile(r'.*Canad(?:a|ian)\s+federal.*?((?:by-?)?)election.*?(?:(\w+)\s+([\w\d]+),?\s+)?(\d\d\d\d).*')
 
 db = schema.make_standard_database()
 
@@ -85,12 +85,15 @@ def process_page(tup):
         subitems = list(gen())
         for subidx, a in enumerate(subitems):
             link_title, text = a.attrs.get('title', a.text), a.text
-            logger.info("      [{:3}/{:3}]: {}".format(subidx, len(subitems), link_title))
-
             riding_page = wiki.page(title=link_title, auto_suggest=False)
+            del link_title
+
+            page_title = riding_page.title
+            logger.info("      [{:3}/{:3}]: {}".format(subidx, len(subitems), page_title))
+            page_title = riding_page.title
             doc = BeautifulSoup(riding_page.html(), 'html.parser')
             page_outline = DocumentOutline(doc)
-            print("### {} -> {!r}".format(text, link_title))
+            print("### {} -> {!r}".format(text, page_title))
             try:
                 pass
                 #tbl = Table(doc.select('table.infobox')[0], header_all=True)
@@ -99,7 +102,7 @@ def process_page(tup):
                 pass
 
             tables = list(page_outline.soup.select('table'))
-            # TODO get heading multi-level
+            # TODO get headings for each level
             #print("    ", {page_outline.get_heading(t) for t in tables})
             result_tbls = [
                 t for t in tables
@@ -123,11 +126,12 @@ def process_page(tup):
                 else:
                     title = caption.text if caption else None
 
-                riding_id = link_title
+                riding_id = page_title
                 election_id = None
                 if title is None:
                     print("")
                     print("```")
+                    print("# No Title")
                     print(pprint.pformat(tbl))
                     print(pprint.pformat(tbl.to_dict()))
                     print("```")
@@ -137,10 +141,26 @@ def process_page(tup):
                     print("")
                     match = re_federal_election.match(title)
                     if match is not None:
-                        year = int(match.groups(1)[0])
+                        is_by_election = bool(match.groups(1)[0])
+                        year = int(match.groups(1)[3])
+                        if is_by_election:
+                            month, day = match.groups(1)[1], match.groups(1)[2]
+                            if month == 1 or day == 1:
+                                by_election_date = year
+                            else:
+                                by_election_date = "{} {}, {}".format(month, day, year)
+                        else:
+                            by_election_date = None
                         print(" - Year: {}".format(year))
+                        print("")
                         election_id = schema.make_election_id(year)
                         re_id = schema.make_re_id(election_id, riding_id)
+                    else:
+                        is_by_election, by_election_date, year, re_id = None, None, None, None
+                        print(" - *Year is not determined*: `{}`".format(title))
+                        print("")
+
+                if year is None: continue
 
                 party_colours = transposed.get((0, 'Party'))
                 parties = transposed.get((1, 'Party'))
@@ -180,13 +200,23 @@ def process_page(tup):
                     print("")
 
                 for tup in df[["Colour","Party","Candidate","Votes","%"]].values:
+                    if any(x is not None and not (x.rowspan == 1 and x.colspan == 1) for x in tup):
+                        continue
+
                     colour, party, candidate, votes, percent = [
                         x.text if x else None
                         for x in tup
                     ]
+                    print("```")
+                    db.declare(
+                        "RidingElection",
+                        re_id=re_id,
+                        by_election_date=by_election_date,
+                        is_by_election=is_by_election
+                    )
                     db.declare(
                         "CandidateRidingElection",
-                        source=link_title,
+                        source=page_title,
                         cre_id=schema.make_cre_id(
                             re_id=re_id,
                             candidate_name=candidate,
@@ -197,6 +227,7 @@ def process_page(tup):
                         re_id=re_id,
                         votes=votes,
                         votes_percent=percent)
+                    print("```")
 
                 #for p, c in zip(df.Party, df.Candidate):
                 #    party_candidates[p.text][c.text] = a.text
@@ -212,10 +243,10 @@ if __name__ == "__main__":
     pd.set_option('display.width', 700)
 
     parent_page = wiki.page(title="Historical federal electoral districts of Canada")
-    links = [(p, i, len(parent_page.links))
-             for i, p in enumerate(parent_page.links)
+    links = [p for p in parent_page.links
              if "List of Canadian" in p and "electoral districts" in p]
     links = links[::-1]
+    links = [(p, i, len(links)) for i, p in enumerate(links)]
 
     ridings = defaultdict(lambda: set())
 
