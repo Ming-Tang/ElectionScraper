@@ -1,8 +1,6 @@
 from collections import defaultdict
 import itertools as it
 
-#TODO handle by-elections
-
 standard_schema = {
     "Election": [
         ("election_id", "str", "id"),
@@ -84,6 +82,7 @@ def make_riding_id(riding_name, start_year=None, end_year=None):
         return "{}: {}".format(riding_name, start_year)
 
 
+# TODO by-election ids
 def make_re_id(election_id, riding_id):
     assert isinstance(election_id, str), election_id
     assert isinstance(riding_id, str), riding_id
@@ -111,6 +110,23 @@ class Row:
 
     def __repr__(self):
         return "Row({})".format(self.data)
+
+    def update(self, row1):
+        assert isinstance(row1, Row)
+        for vals1, source1 in row1.items:
+            self.add(vals1, source1)
+
+    def __bool__(self):
+        return bool(self.items)
+
+    def _as_tuple(self):
+        return (self.items, self.data, self.sources)
+
+    def __eq__(self, other):
+        return type(self) is type(other) and self._as_tuple() == other._as_tuple()
+
+    def __hash__(self):
+        raise TypeError("unhashable type: '{}'".format(type(self)))
 
 
 def _make_item(): return defaultdict(Row)
@@ -148,7 +164,7 @@ class Database:
         self.data[schema_name][key].add(vals, source)
 
     def declare(self, schema_name, source=None, **kwargs):
-        print("declare({!r}, source={!r}, **{!r})".format(schema_name, source, kwargs))
+        #print("declare({!r}, source={!r}, **{!r})".format(schema_name, source, kwargs))
         assert schema_name in self.schema, "Schema not found: {}".format(schema_name)
 
         key, vals = self._validate(schema_name, kwargs)
@@ -191,6 +207,26 @@ class Database:
         assert remaining, "Invalid columns for {!r}: {!r}".format(schema_name, remaining)
         return tuple(v for i, v in sorted(key)), kwargs
 
+
+    def update_from(self, db):
+        assert self.schema == db.schema
+        assert self.schema_groups == db.schema_groups
+        for s, d1 in db.data.items():
+            d = self.data[s]
+            for key, row in d1.items():
+                if key in d:
+                    d[key].update(row)
+                else:
+                    d[key] = row
+
+    def _as_tuple(self):
+        return (self.schema, self.schema_groups, self.data)
+
+    def __eq__(self, other):
+        return type(self) is type(other) and self._as_tuple() == other._as_tuple()
+
+    def __hash__(self):
+        raise TypeError("unhashable type: '{}'".format(type(self)))
 
 def make_standard_database():
     return Database(standard_schema)

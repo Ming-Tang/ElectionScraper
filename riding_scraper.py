@@ -19,7 +19,7 @@ def setup_logging():
     ch = logging.StreamHandler(sys.stderr)
     logger.addHandler(ch)
     logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s | %(message)s')
+    formatter = logging.Formatter('%(asctime)s %(processName)s | %(message)s')
     ch.setFormatter(formatter)
 
     return logger
@@ -29,32 +29,19 @@ logger = setup_logging()
 deltaPercent = '\u2206%'
 
 re_province = re.compile(r"^([^-]+)(\s*-\s*\d+\s+seats?)?$")
-#re_years = re.compile(r"^\s*List.*Canadian.*,?\s+(\d+)\W(\d+)\s*$")
 re_year = re.compile(r', (\d\d\d\d)')
 re_federal_election = re.compile(r'.*Canad(?:a|ian)\s+federal.*?((?:by-?)?)election.*?(?:(\w+)\s+([\w\d]+),?\s+)?(\d\d\d\d).*')
 
-db = schema.make_standard_database()
-
 def process_page(tup):
+    db = schema.make_standard_database()
+
     link, i0, nn = tup
     output = []
-    #print = lambda x: output.append(str(x))
 
-    party_candidates = defaultdict(lambda: defaultdict(lambda: None))
     listing_page = wiki.page(title=link)
     outline = DocumentOutline(BeautifulSoup(listing_page.html(), 'html.parser'))
     print("")
     print("# " + repr(link))
-
-    #year_matches = re_years.match(link)
-    #if year_matches is None:
-    #    start_year, end_year = last_year, 2017
-    #else:
-    #    start_year, end_year = year_matches.group(1), year_matches.group(2)
-    #    start_year, end_year = int(start_year), int(end_year)
-    #    assert start_year >= 1867 and end_year >= 1867
-    #    assert end_year >= start_year
-    #    last_year = end_year
 
     logger.info("[{:3}/{:3}] {}".format(i0, nn, link))
     items = outline.headings.items()
@@ -102,20 +89,12 @@ def process_page(tup):
                 pass
 
             tables = list(page_outline.soup.select('table'))
-            # TODO get headings for each level
-            #print("    ", {page_outline.get_heading(t) for t in tables})
-            result_tbls = [
-                t for t in tables
-                #if t and page_outline.get_heading(t) and
-                #"result" in page_outline.get_heading(t).title.lower()
-            ]
-
             header = lambda xs: (
                 xs[-1].text
                 if len(xs) > 1 and xs[-1]
                 else ": ".join(x.text for x in xs if x))
 
-            for result_tbl in result_tbls:
+            for result_tbl in tables:
                 tbl = Table(result_tbl, header_all=True)
                 transposed = tbl.transpose(to_s=False, header=header)
                 first_cell = tbl[0, 0]
@@ -229,32 +208,22 @@ def process_page(tup):
                         votes_percent=percent)
                     print("```")
 
-                #for p, c in zip(df.Party, df.Candidate):
-                #    party_candidates[p.text][c.text] = a.text
-
-            #for year in range(start_year, end_year + 1):
-            #    ridings[text].add(year)
-
-    #return {k: dict(v) for k, v in party_candidates.items()}
     output.append("")
-    return "\n".join(output)
+    return db
+
 
 if __name__ == "__main__":
     pd.set_option('display.width', 700)
 
     parent_page = wiki.page(title="Historical federal electoral districts of Canada")
     links = [p for p in parent_page.links
-             if "List of Canadian" in p and "electoral districts" in p]
-    links = links[::-1]
+             if "List of Canadian" in p and "electoral districts" in p][::-1]
     links = [(p, i, len(links)) for i, p in enumerate(links)]
 
-    ridings = defaultdict(lambda: set())
-
-    party_candidates = defaultdict(lambda: defaultdict(lambda: None))
-
-    results = []
     try:
-        if False:
+        db = schema.make_standard_database()
+        results = []
+        if True:
             with mp.Pool(processes=mp.cpu_count()) as pool:
                 results = pool.map(process_page, links)
                 pool.terminate()
@@ -262,20 +231,10 @@ if __name__ == "__main__":
         else:
             results = list(map(process_page, links))
 
+        for db1 in results:
+            db.update_from(db1)
     finally:
         print("<hr />")
-        results1 = "\n".join(results)
-        if results1: print(results1)
         import pickle
         with open("db.pickle", "wb") as f: pickle.dump(db, file=f)
 
-
-    #party_candidates = defaultdict(lambda: defaultdict(lambda: set()))
-    #for d in results:
-    #    for k, v in d.items():
-    #        party_candidates[k].update(v)
-
-    #print(party_candidates)
-
-    #pprint.pprint(list(party_candidates.keys()))
-    #pprint.pprint({k: dict(v) for k, v in party_candidates.items()})
