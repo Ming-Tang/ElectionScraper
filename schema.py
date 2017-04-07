@@ -63,7 +63,13 @@ standard_schema = {
     ]
 }
 
+
 key_id = "id"
+
+
+def _make_item():
+    """For pickle backward compatibility."""
+    raise NotImplementedError()
 
 
 def make_election_id(year):
@@ -94,6 +100,44 @@ def make_cre_id(re_id, candidate_name, party_name):
     assert (candidate_name is None or isinstance(candidate_name, str)), candidate_name
     assert (party_name is None or isinstance(party_name, str)), party_name
     return "{}:{}:{}".format(re_id, candidate_name, party_name)
+
+
+def _convert_number_func(func):
+    def is_acclaimed(x):
+        return 'acc' in x.lower()
+
+    def clean_number(x):
+        return x.replace(',', '').replace('%', '').replace(' ', '').replace('b', '')
+
+    def convert_func(x):
+        if x is None:
+            return None
+
+        x = str(x)
+
+        if is_acclaimed(x):
+            return float("inf")
+
+        try:
+            x1 = clean_number(x)
+            if not x1:
+                return None
+            return func(x1)
+        except ValueError:
+            return '!! ' + x
+
+    return convert_func
+
+
+conversions = {
+    "bool": bool,
+    "str": str,
+    "province": str,
+    "year": str,
+    "percent": _convert_number_func(float),
+    "number": _convert_number_func(float),
+    "count": _convert_number_func(lambda x: int(x.replace('.', ''))),
+}
 
 
 class Row:
@@ -129,14 +173,12 @@ class Row:
         raise TypeError("unhashable type: '{}'".format(type(self)))
 
 
-def _make_item(): return defaultdict(Row)
-
-
 class Database:
     def __init__(self, schema):
         assert isinstance(schema, dict)
-        self.data = defaultdict(_make_item)
+
         self.schema = schema
+        self.data = {k: defaultdict(Row) for k in self.schema.keys()}
 
         def classify(t):
             i, c = t
@@ -160,8 +202,13 @@ class Database:
             assert key_id in g, k
             assert len(g[key_id]) == 1, k
 
+    def _check_row(self, row_schema, vals):
+        return { k: conversions[row_schema.get(k, "str")](v) for k, v in vals.items() }
+
     def _add(self, schema_name, key, vals, source):
-        self.data[schema_name][key].add(vals, source)
+        schema = dict((tup[0], tup[1]) for tup in self.schema[schema_name])
+        vals1 = self._check_row(schema, vals)
+        self.data[schema_name][key].add(vals1, source)
 
     def declare(self, schema_name, source=None, **kwargs):
         #print("declare({!r}, source={!r}, **{!r})".format(schema_name, source, kwargs))
@@ -206,7 +253,6 @@ class Database:
 
         assert remaining, "Invalid columns for {!r}: {!r}".format(schema_name, remaining)
         return tuple(v for i, v in sorted(key)), kwargs
-
 
     def update_from(self, db):
         assert self.schema == db.schema

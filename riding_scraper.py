@@ -36,7 +36,6 @@ def process_page(tup):
     db = schema.make_standard_database()
 
     link, i0, nn = tup
-    output = []
 
     listing_page = wiki.page(title=link)
     outline = DocumentOutline(BeautifulSoup(listing_page.html(), 'html.parser'))
@@ -130,6 +129,7 @@ def process_page(tup):
                                 by_election_date = "{} {}, {}".format(month, day, year)
                         else:
                             by_election_date = None
+
                         print(" - Year: {}".format(year))
                         print("")
                         election_id = schema.make_election_id(year)
@@ -179,36 +179,47 @@ def process_page(tup):
                     print("")
 
                 for tup in df[["Colour","Party","Candidate","Votes","%"]].values:
-                    if any(x is not None and not (x.rowspan == 1 and x.colspan == 1) for x in tup):
+                    if any(not (x.rowspan == 1 and x.colspan == 1)
+                           for x in tup if x is not None):
                         continue
 
                     colour, party, candidate, votes, percent = [
                         x.text if x else None
                         for x in tup
                     ]
-                    print("```")
+
+                    if votes and '|' in votes:
+                        xs = votes.split('|')
+                        votes, percent = xs[0], xs[1]
+
+                    if isinstance(candidate, str) and (
+                        ('swing' in candidate.lower() or 'hold' in candidate.lower())):
+                        print("Filter out:")
+                        print("```")
+                        print(tup)
+                        print("```")
+                        pass
+
+                    # print("```")
                     db.declare(
                         "RidingElection",
                         re_id=re_id,
                         by_election_date=by_election_date,
-                        is_by_election=is_by_election
-                    )
+                        is_by_election=is_by_election)
                     db.declare(
                         "CandidateRidingElection",
                         source=page_title,
                         cre_id=schema.make_cre_id(
                             re_id=re_id,
                             candidate_name=candidate,
-                            party_name=party
-                        ),
+                            party_name=party),
                         party_name=party,
                         candidate_name=candidate,
                         re_id=re_id,
                         votes=votes,
                         votes_percent=percent)
-                    print("```")
+                    # print("```")
 
-    output.append("")
     return db
 
 

@@ -5,11 +5,26 @@ from collections import defaultdict, Counter
 def key(i):
     assert isinstance(i, tuple), i
     assert isinstance(i[1], dict), i[1]
-    if 'acc' in (i[1].get('votes', '') or '').lower():
-        return 1e100
 
+    # TODO filter in riding_scraper
     if (i[1].get('candidate_name') or '').lower() in ('swing', 'hold'):
         return -1
+
+    v = i[1].get('votes')
+    if v is None:
+        return -1
+
+    if isinstance(v, (int, float)):
+        return v
+
+    if 'acc' in v:
+        return 1e100
+
+    print("Invalid number: {!r} | {}".format(v, i))
+    return -1
+
+    if 'acc' in (i[1].get('votes', '') or '').lower():
+        return 1e100
 
     if not (i[1].get('votes') or '').strip():
         return -1
