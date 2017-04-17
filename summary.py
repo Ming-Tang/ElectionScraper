@@ -2,110 +2,47 @@ import pickle
 import pprint
 from collections import defaultdict, Counter
 
-def key(i):
-    assert isinstance(i, tuple), i
-    assert isinstance(i[1], dict), i[1]
-
-    # TODO filter in riding_scraper
-    if (i[1].get('candidate_name') or '').lower() in ('swing', 'hold'):
-        return -1
-
-    v = i[1].get('votes')
-    if v is None:
-        return -1
-
-    if isinstance(v, (int, float)):
-        return v
-
-    if 'acc' in v:
-        return 1e100
-
-    print("Invalid number: {!r} | {}".format(v, i))
-    return -1
-
-    if 'acc' in (i[1].get('votes', '') or '').lower():
-        return 1e100
-
-    if not (i[1].get('votes') or '').strip():
-        return -1
-
-    try:
-        if '|' in i[1]['votes']:
-            raise ValueError("TODO handle '|' in scraper: {!r}".format(i[1]['votes']))
-
-        return float(i[1]['votes'].replace(',', '').replace('%', '').replace(' ', ''))
-    except (ValueError, AttributeError) as ex:
-        print(ex, i[1])
-        return -1
-
 data = pickle.load(open('db.pickle', 'rb')).data
 assert isinstance(data, dict)
 
-elections = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+elections = defaultdict(lambda: defaultdict(list))
 
 for (k,), v in data["CandidateRidingElection"].items():
     election, riding, candidate, party = k.split(':')
-    elections[election][riding][party] = v.data
+    elections[election][riding].append(v.data)
 
 for e, v in sorted(elections.items()):
     print("[{}]".format(e))
 
     def get_winner(riding):
         v1 = v[riding]
-        if data["RidingElection"][(list(v1.values())[0].get('re_id'),)].data.get('is_by_election'):
+        if data["RidingElection"][(v1[0].get('re_id'),)].data.get('is_by_election'):
             return None
 
-        values = [(key(x), x) for x in v1.items()]
-        #print(values)
-        set_keys = {k for k, v in values}
-        if tuple(set_keys) == (-1,):
-            return None
-
-        winner = max(v1.items(), key=key)[1]
+        winner = min(v1, key=lambda x: float("inf") if x.get("order") is None else x["order"])
         winner = dict(winner)
         winner.pop('re_id')
         winner.pop('cre_id')
         return winner
 
-    winners = {
-        riding: get_winner(riding) for riding in v.keys()
-    }
+    winners = { riding: get_winner(riding) for riding in v.keys() }
     #print("\n".join(sorted(winners.keys())))
 
     parties = Counter((None if w is None else w['party_name']) for w in winners.values())
-    parties1 = defaultdict(lambda: 0)
-
-    winners1 = {
-        riding: #sorted(
-            [(key((k, v)), k) for k, v in v[riding].items()]#,
-            #key=lambda y: -1 if y is None else y
-        #)
-        for riding in v.keys()
-    }
-    def key1(i):
-        if i[1] is None: return -1
-        k = key(i)
-        if k == -1: return 0
-        else: return k
-
-    if False:
-        for k, v in sorted(winners.items(), key=key1, reverse=True):
-            print("{:45}: {!r}".format(k, v))
-
     pprint.pprint(parties)
-
-    if False:
-        for riding, v1 in v.items():
-            print("  - {} : {}".format(
-                riding,
-                winners[riding]["party_name"] if isinstance(winner, dict)
-                else None))
-
-            for p, v2 in v1.items():
-                d1 = dict(v2)
-                d1.pop('re_id')
-                d1.pop('cre_id')
-                d1.pop('party_name')
-                print("    - {:40} {}".format(p, d1))
-
+    print(sum(v for v in parties.values() if v is not None))
     print("")
+
+top2s = defaultdict(dict)
+for (k,), v in data["CandidateRidingElection"].items():
+    v = v.data
+    if v.get("order") < 2:
+        top2s[v.get("re_id")][v.get("order")] = (v.get("party_name"), v.get("votes_percent"))
+
+raise SystemExit()
+top2s = {k: tuple(j for i, j in sorted(v.items())) for k, v in top2s.items()}
+pprint.pprint(top2s)
+vs = [v for v in top2s.values() if len(v) > 1 and all(b is not None for a, b in v)]
+pprint.pprint(sorted(vs, key=lambda x: (x[0][0], x[1][0])))
+vs1 = [tuple(x for x, y in v) for v in vs]
+pprint.pprint(Counter(vs1))

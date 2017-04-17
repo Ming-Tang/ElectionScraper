@@ -35,10 +35,11 @@ standard_schema = {
         ("re_id", "str", "id"),
         ("election_id", "str", "Election"),
         ("riding_id", "str", "Riding"),
-        ("rejected_ballots", "count"),
-        ("valid_ballots", "number"),
-        ("turnout", "count"),
-        ("turnout_percent", "percent"),
+        ("rejected_ballot", "count"),
+        ("rejected_ballot_percent", "percent"),
+        ("total_valid_vote", "count"),
+        ("voter_turnout", "count"),
+        ("voter_turnout_percent", "percent"),
         ("expense_limit", "number"),
         ("is_by_election", "bool"),
         ("by_election_date", "str")
@@ -54,6 +55,7 @@ standard_schema = {
     "CandidateRidingElection": [
         ("cre_id", "str", "id"),
         ("re_id", "str", "RidingElection"),
+        ("order", "order"),
         ("candidate_name", "str", "Candidate"),
         ("party_name", "str", "Party"),
         ("votes", "count"),
@@ -107,7 +109,7 @@ def _convert_number_func(func):
         return 'acc' in x.lower()
 
     def clean_number(x):
-        return x.replace(',', '').replace('%', '').replace(' ', '').replace('b', '')
+        return x.replace(',', '').replace('%', '').replace(' ', '').replace('b', '').replace('$', '')
 
     def convert_func(x):
         if x is None:
@@ -116,15 +118,15 @@ def _convert_number_func(func):
         x = str(x)
 
         if is_acclaimed(x):
-            return float("inf")
+            return "acclaimed"
 
         try:
             x1 = clean_number(x)
             if not x1:
                 return None
             return func(x1)
-        except ValueError:
-            return '!! ' + x
+        except ValueError as ex:
+            return '!! ' + repr(x) + " " + repr(ex)
 
     return convert_func
 
@@ -134,6 +136,7 @@ conversions = {
     "str": str,
     "province": str,
     "year": str,
+    "order": int,
     "percent": _convert_number_func(float),
     "number": _convert_number_func(float),
     "count": _convert_number_func(lambda x: int(x.replace('.', ''))),
@@ -203,7 +206,10 @@ class Database:
             assert len(g[key_id]) == 1, k
 
     def _check_row(self, row_schema, vals):
-        return { k: conversions[row_schema.get(k, "str")](v) for k, v in vals.items() }
+        return {
+            k: None if v is None else conversions[row_schema.get(k, "str")](v)
+            for k, v in vals.items()
+        }
 
     def _add(self, schema_name, key, vals, source):
         schema = dict((tup[0], tup[1]) for tup in self.schema[schema_name])
@@ -277,10 +283,3 @@ class Database:
 def make_standard_database():
     return Database(standard_schema)
 
-
-if __name__ == "__main__":
-    import pprint
-    db = Database(standard_schema)
-    db.declare("Riding", riding_id="R1", riding_name="X")
-    db.declare("RidingElection", re_id="RE1", riding_id="R2", election_id="E1")
-    pprint.pprint(dict(db.data))
