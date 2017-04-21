@@ -1,8 +1,12 @@
+output/
 *.shelve
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+.Rdata
+.Rhistory
 
 # C extensions
 *.so
@@ -93,3 +97,4 @@ ENV/
 
 # Rope project settings
 .ropeproject
+.Rproj.user

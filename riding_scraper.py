@@ -36,9 +36,8 @@ re_federal_election = re.compile(r'.*Canad(?:a|ian)\s+federal.*?((?:by-?)?)elect
 re_electoral_district = re.compile(r'\(([a-zA-Z0-9\s]*)?electoral district\)')
 
 def filter_page_title(page_title):
-    dash = '\u2014'
-    #page_title = page_title.replace(dash, "-")
-    #return page_title
+    dash, dash1 = '\u2014', '\u2015'
+    page_title = page_title.replace(dash, "-").replace(dash1, "-")
     return re_electoral_district.sub("", page_title).strip()
 
 
@@ -225,10 +224,19 @@ def process_page(tup):
                 print("```")
                 pass
 
+            if colour:
+                db.declare(
+                    "Party",
+                    party_name=party,
+                    colour=colour)
+
             # print("```")
             db.declare(
                 "RidingElection",
+                source=page_title,
                 re_id=re_id,
+                election_id=election_id,
+                riding_id=riding_id,
                 by_election_date=by_election_date,
                 is_by_election=is_by_election,
                 total_valid_vote=total_valid_vote,
@@ -240,6 +248,8 @@ def process_page(tup):
             db.declare(
                 "CandidateRidingElection",
                 source=page_title,
+                riding_id=riding_id,
+                election_id=election_id,
                 order=order,
                 cre_id=schema.make_cre_id(
                     re_id=re_id,
@@ -259,12 +269,12 @@ def page_titles(link):
     #logger.info(link)
     listing_page = wiki.page(title=link)
     outline = DocumentOutline(BeautifulSoup(listing_page.html(), 'html.parser'))
-    print("")
+    #print("")
     print(" - " + repr(link))
 
     items = outline.headings.items()
     for idx, (i, h) in enumerate(items):
-        print("")
+        #print("")
         if "References" in h.title or "External" in h.title or "See also" in h.title:
             continue
 
@@ -300,7 +310,7 @@ def process_page_profiled(tup):
 
     if y == 42:
         logger.info("Running profiler.")
-        cProfile.runctx('process_page(tup)', globals(), locals(), 'profile.prof')
+        cProfile.runctx('process_page(tup)', globals(), locals(), 'output/profile.prof')
 
     res = process_page(tup)
     assert res is not None, tup
@@ -310,15 +320,13 @@ def process_page_profiled(tup):
 def f1(link): return list(page_titles(link))
 
 
-if __name__ == "__main__":
+def main():
     pd.set_option('display.width', 700)
 
     parent_page = wiki.page(title="Historical federal electoral districts of Canada")
     links = [p for p in parent_page.links
              if "List of Canadian" in p and "electoral districts" in p][::-1]
-    #links = [(p, i, len(links)) for i, p in enumerate(links)]
 
-    # doesn't handle two links of same name with different link texts
     links = list(set(it.chain.from_iterable(map(f1, links))))
     links.sort()
     with mp.Pool(processes=mp.cpu_count()) as pool:
@@ -331,29 +339,8 @@ if __name__ == "__main__":
         pool.terminate()
         pool.join()
 
-
     db = schema.make_standard_database()
     for db1 in results:
         db.update_from(db1)
 
-    with open("db.pickle", "wb") as f: pickle.dump(db, file=f)
-    raise SystemExit()
-
-    try:
-        db = schema.make_standard_database()
-        results = []
-        if True:
-            with mp.Pool(processes=mp.cpu_count()) as pool:
-                results = pool.map(process_page, links)
-                pool.terminate()
-                pool.join()
-        else:
-            results = list(map(process_page, links))
-
-        for db1 in results:
-            db.update_from(db1)
-    finally:
-        print("<hr />")
-        import pickle
-        with open("db.pickle", "wb") as f: pickle.dump(db, file=f)
-
+    return db

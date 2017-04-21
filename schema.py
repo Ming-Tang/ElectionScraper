@@ -23,11 +23,21 @@ standard_schema = {
     ],
 
     "Party": [
-        ("party_name", "str", "id")
+        ("party_name", "str", "id"),
+        ("colour", "str")
     ],
 
     "Candidate": [
         ("candidate_name", "str", "id")
+    ],
+
+    "ProvincialBreakdown": [
+        ("pb_id", "str", "id"),
+        ("election_id", "str", "Election"),
+        ("province", "province"),
+        ("party_name", "str", "Party"),
+        ("popular_vote_percent", "percent"),
+        ("seats", "count")
     ],
 
     # Relationship between riding and election
@@ -49,12 +59,20 @@ standard_schema = {
     "PartyElection":  [
         ("pe_id", "str", "id"),
         ("party_name", "str", "Party"),
-        ("election_id", "str", "Election")
+        ("election_id", "str", "Election"),
+        ("candidates", "count"),
+        ("leader", "str"),
+        ("popular_vote", "count"),
+        ("popular_vote_percent", "percent"),
+        ("seats_dissolution", "count"),
+        ("seats_elected", "count")
     ],
 
     "CandidateRidingElection": [
         ("cre_id", "str", "id"),
         ("re_id", "str", "RidingElection"),
+        ("election_id", "str", "Election"),
+        ("riding_id", "str", "Riding"),
         ("order", "order"),
         ("candidate_name", "str", "Candidate"),
         ("party_name", "str", "Party"),
@@ -74,10 +92,22 @@ def _make_item():
     raise NotImplementedError()
 
 
+def make_pe_id(election_id, party_id):
+    assert isinstance(election_id, str), election_id
+    assert isinstance(party_id, str), party_id
+    return "{}:{}".format(election_id, party_id)
+
+
 def make_election_id(year):
     assert isinstance(year, int), year
     return "F{}".format(year)
 
+
+def make_pb_id(election_id, province, party_id):
+    assert isinstance(election_id, str), election_id
+    assert isinstance(province, str), province
+    assert isinstance(party_id, str), party_id
+    return "{}:{}:{}".format(election_id, province, party_id)
 
 def make_riding_id(riding_name, start_year=None, end_year=None):
     assert isinstance(riding_name, str)
@@ -104,18 +134,29 @@ def make_cre_id(re_id, candidate_name, party_name):
     return "{}:{}:{}".format(re_id, candidate_name, party_name)
 
 
+report_exception = False
+
 def _convert_number_func(func):
+    def is_none(x):
+        x = x.lower()
+        return 'n/a' in x or 'vacant' in x
+
     def is_acclaimed(x):
         return 'acc' in x.lower()
 
     def clean_number(x):
-        return x.replace(',', '').replace('%', '').replace(' ', '').replace('b', '').replace('$', '')
+        chars = ' ,%b$\u2013\u2014-'
+        for c in chars: x = x.replace(c, '')
+        return x
 
     def convert_func(x):
         if x is None:
             return None
 
         x = str(x)
+
+        if is_none(x):
+            return None
 
         if is_acclaimed(x):
             return "acclaimed"
@@ -126,7 +167,10 @@ def _convert_number_func(func):
                 return None
             return func(x1)
         except ValueError as ex:
-            return '!! ' + repr(x) + " " + repr(ex)
+            if report_exception:
+                return '!! ' + repr(x) + " " + repr(ex)
+            else:
+                return None
 
     return convert_func
 
