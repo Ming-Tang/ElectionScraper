@@ -15,5 +15,5 @@ with open('output/data_full.json', 'w') as f:
 
 for kk, vv in json_data.items():
    df = pd.DataFrame.from_dict(vv, orient='index')
-   df.to_csv("output/{}.csv".format(kk), index=False)
+   df.to_csv("output/{}.csv".format(kk), index=False, na_rep='NA')
 

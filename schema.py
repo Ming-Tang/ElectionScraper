@@ -64,6 +64,7 @@ standard_schema = {
         ("leader", "str"),
         ("popular_vote", "count"),
         ("popular_vote_percent", "percent"),
+        ("popular_vote_delta_percent", "delta_percent"),
         ("seats_dissolution", "count"),
         ("seats_elected", "count")
     ],
@@ -78,8 +79,9 @@ standard_schema = {
         ("party_name", "str", "Party"),
         ("votes", "count"),
         ("votes_percent", "percent"),
-        ("delta_percent", "percent"),
-        ("expenditures", "number")
+        ("delta_percent", "delta_percent"),
+        ("expenditures", "number"),
+        ("elected", "bool")
     ]
 }
 
@@ -147,6 +149,7 @@ def _convert_number_func(func):
     def clean_number(x):
         chars = ' ,%b$\u2013\u2014-'
         for c in chars: x = x.replace(c, '')
+        x = x.replace('pp', '')
         return x
 
     def convert_func(x):
@@ -159,13 +162,14 @@ def _convert_number_func(func):
             return None
 
         if is_acclaimed(x):
-            return "acclaimed"
+            return None # "acclaimed"
 
         try:
+            is_negative = len(x) and x[0] == '-'
             x1 = clean_number(x)
             if not x1:
                 return None
-            return func(x1)
+            return [1, -1][is_negative] * func(x1)
         except ValueError as ex:
             if report_exception:
                 return '!! ' + repr(x) + " " + repr(ex)
@@ -182,6 +186,7 @@ conversions = {
     "year": str,
     "order": int,
     "percent": _convert_number_func(float),
+    "delta_percent": _convert_number_func(float),
     "number": _convert_number_func(float),
     "count": _convert_number_func(lambda x: int(x.replace('.', ''))),
 }

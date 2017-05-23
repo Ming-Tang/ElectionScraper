@@ -92,10 +92,6 @@ def main():
         ][0]
         summary = Table(summary_table)
 
-        #print(summary)
-        #pprint.pprint(summary.to_dict())
-        #pprint.pprint(summary.transpose(True))
-
         res = summary.transpose(to_s=False, indexed=True)
 
         for k in res.keys():
@@ -119,10 +115,7 @@ def main():
         for name, colour in zip(names, colours):
             parties['Colour'][name.text] = colour.colour
 
-        #print("--------------")
-        #print("[{}]".format(year))
         df = pd.DataFrame(parties)
-        #print(df)
 
         def find(xs):
             xs = list(xs)
@@ -133,6 +126,7 @@ def main():
         key_leader = find(k for k in keys if 'leader' in k.lower())
         key_pv_percent = find(k for k in keys if 'popular vote' in k.lower() and '%' in k)
         key_pv_count = find(k for k in keys if 'popular vote' in k.lower() and '%' not in k)
+        key_delta_percent = find(k for k in keys if 'pp change' in k.lower())
         key_seats_dissolved = find(
             k for k in keys
             if re.match(r'seats\:.*(dissol.+)', k.lower()))
@@ -154,6 +148,7 @@ def main():
                 leader=row.get(key_leader),
                 popular_vote=row.get(key_pv_count),
                 popular_vote_percent=row.get(key_pv_percent),
+                popular_vote_delta_percent=row.get(key_delta_percent),
                 seats_dissolution=row.get(key_seats_dissolved),
                 seats_elected=row.get(key_seats_elected))
 
