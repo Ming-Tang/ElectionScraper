@@ -1,0 +1,86 @@
+---
+title: "Untitled"
+runtime: shiny
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(ggplot2)
+library(ggtern)
+```
+
+```{r, echo=FALSE}
+
+inputPanel(
+  sliderInput("x", label="X", min=0, max=1, value=0.5),
+  sliderInput("y", label="Y", min=0, max=1, value=0.2),
+  sliderInput("z", label="Z", min=0, max=1, value=0.3)
+)
+
+inputPanel(
+  sliderInput("x1", label="X1", min=0, max=1, value=0.35),
+  sliderInput("y1", label="Y1", min=0, max=1, value=0.3),
+  sliderInput("z1", label="Z1", min=0, max=1, value=0.35)
+)
+
+inputPanel(
+  sliderInput("M", label="Number of points", min=1, max=500, value=50, step=1),
+  #sliderInput("logN", label="log N", min=2, max=8, value=3, step=0.1),
+  sliderInput("SD", label="stddev", min=0, max=100, value=2, step=0.5),
+  selectInput("mode", label="Mode", choices=c("uniform", "proportional"), selected="uniform")
+)
+
+data <- reactive({
+  normalize <- function(xs) xs / sum(xs)
+  M <- input$M
+  SD <- input$SD / 100
+
+  v <- normalize(c(input$x, input$y, input$z))
+  v1 <- normalize(c(input$x1, input$y1, input$z1))
+
+  data <- data.table(id=1L:M)[,{
+    x <- c(-1, -1, -1)
+    while (!all(0 < x & x < 100)) {
+      x <- 100 * normalize(c(
+        rnorm(1, mean=v[1], sd=SD),
+        rnorm(1, mean=v[2], sd=SD),
+        rnorm(1, mean=v[3], sd=SD)))
+    }
+    .(V1=x[1], V2=x[2], V3=x[3], group=1L)
+  }, by="id"]
+  data[, winner := which.max(c(V1, V2, V3)), by="id"]
+  data[, winner := as.character(winner)]
+  
+  delta <- 100 * (v1 - v)
+  ratio <- v1 / v
+  if (input$mode == "uniform")
+    data1 <- data[,.(V1=V1+delta[1], V2=V2+delta[2], V3=V3+delta[3], group=2L), by="id"]
+  else
+    data1 <- data[,.(V1=V1*ratio[1], V2=V2*ratio[2], V3=V3*ratio[3], group=2L), by="id"]
+  
+  data1[, winner := which.max(c(V1, V2, V3)), by="id"]
+  data1[, winner := as.character(winner)]
+  
+  data <- rbind(data, data1)
+  setorder(data, id, group)
+  data
+})
+
+renderPlot({
+  set.seed(0)
+    
+  ggtern(aes(x=V1, y=V2, z=V3, group=id, col=winner), data=data()) +
+    geom_point(alpha=0.5) +
+    geom_path(alpha=0.3, col="orange") +
+    geom_path(
+      aes(x=c(input$x, input$x1), y=c(input$y, input$y1), z=(c(input$z, input$z1))),
+      size=3,
+      data=data.table(), inherit.aes=FALSE, arrow=arrow(ends="last"))
+})
+
+renderTable(data())
+```
+
