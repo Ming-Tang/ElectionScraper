@@ -35,7 +35,7 @@ re_year = re.compile(r', (\d\d\d\d)')
 re_federal_election = re.compile(r'.*Canad(?:a|ian)\s+federal.*?((?:by-?)?)election.*?(?:(\w+)\s+([\w\d]+),?\s+)?(\d\d\d\d).*')
 re_electoral_district = re.compile(r'\(([a-zA-Z0-9\s]*)?electoral district\)')
 
-def filter_page_title(page_title):
+def filter_riding_page_title(page_title):
     dash, dash1 = '\u2014', '\u2015'
     page_title = page_title.replace(dash, "-").replace(dash1, "-")
     return re_electoral_district.sub("", page_title).strip()
@@ -209,6 +209,62 @@ def process_election_table(db, result_tbl, riding_id, source=None):
             elected=elected)
 
 
+def find_province(links):
+    province_pages = {
+        'Ontario': 'ON',
+        'Quebec': 'QC',
+        'Nova Scotia': 'NS',
+        'New Brunswick': 'NB',
+        'Manitoba': 'MB',
+        'British Columbia': 'BC',
+        'Prince Edward Island': 'PE',
+        'Saskatchewan': 'SK',
+        'Alberta': 'AB',
+        'Newfoundland and Labrador': 'NL',
+        'Northwest Territories': 'NT',
+        'Yukon': 'YK',
+        'Nunavut': 'NU'
+    }
+    province_links = [(link, province_pages[link]) for link in links if link in province_pages]
+    if len(province_links) > 1:
+        logging.debug("Multiple provinces: {} {}".format(province_links, province_links[0][1]))
+
+    if len(province_links): return province_links[0][1]
+
+    for p in province_pages:
+        for l in links:
+            if l in p or p in l:
+                return province_pages[p]
+
+
+def find_geo(doc):
+    def process(x):
+        if not x: return None
+        return x[0].text
+
+    assert isinstance(doc, BeautifulSoup)
+    lat, lon = doc.select('span.geo-dms span.latitude'), doc.select('span.geo-dms span.longitude')
+    lat, lon = process(lat), process(lon)
+    if lat is None or lon is None: return None
+    else: return lat, lon
+
+
+def find_geos(riding_page):
+    doc = BeautifulSoup(riding_page.html(), 'html.parser')
+    print(find_geo(doc))
+    subdivs = [tr for tr in doc.select('table tr') if "Census subdivisions" in str(tr.find("th"))]
+    if not subdivs: return None
+
+    subdivs = [a.get("title") for a in subdivs[0].select('a[title]')]
+    subdiv_geos = {}
+    for subdiv in subdivs:
+        doc = BeautifulSoup(wiki.page(title=subdiv, auto_suggest=False).html(), 'html.parser')
+        geo = find_geo(doc)
+        if geo is not None: subdiv_geos[subdiv] = geo
+
+    return subdiv_geos
+
+
 def process_page(tup):
     link_title, text, lock, counter, length = tup
     db = schema.make_standard_database()
@@ -220,16 +276,24 @@ def process_page(tup):
         counter.value += 1
 
     doc = BeautifulSoup(riding_page.html(), 'html.parser')
-    page_outline = DocumentOutline(doc)
+    # page_outline = DocumentOutline(doc)
 
-    tables = list(page_outline.soup.select('table'))
-    riding_id = filter_page_title(riding_page.title)
+    tables = list(doc.select('table'))
+    riding_id = filter_riding_page_title(riding_page.title)
     for result_tbl in tables:
         process_election_table(
             db=db,
             result_tbl=result_tbl,
             source=riding_page,
             riding_id=riding_id)
+
+    province = find_province(riding_page.links)
+    geo = find_geo(doc)
+    db.declare(
+        "Riding",
+        riding_id=riding_id,
+        riding_name=riding_id,
+        province=province)
 
     return db
 
@@ -271,6 +335,7 @@ def page_titles(link):
 
 def process_page_profiled(tup):
     link_title, text, lock, counter, length = tup
+    wiki.set_lock(lock)
     y = 0
     res = None
     with lock: y = counter.value
@@ -296,12 +361,13 @@ def main():
     with mp.Pool(processes=mp.cpu_count()) as pool:
         m = mp.Manager()
         lock = m.Lock()
+        wiki.set_lock(lock)
         counter = m.Value('i', 0)
         results = pool.map(
             process_page_profiled,
             [(l, t, lock, counter, len(links)) for l, t in links])
-        pool.terminate()
-        pool.join()
+        #pool.terminate()
+        #pool.join()
 
     db = schema.make_standard_database()
     for db1 in results:

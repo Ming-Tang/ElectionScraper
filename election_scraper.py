@@ -49,9 +49,8 @@ def main():
     year = '2015'
     while True:
         election_id = schema.make_election_id(int(year))
-        page = wiki.page('Canadian Federal Election, ' + str(year))
+        page = wiki.page('Canadian federal election, ' + str(year), auto_suggest=False)
         html = page.html()
-        #r = requests.get('https://en.wikipedia.org/wiki/British_Columbia_general_election,_' + year)
 
         soup = BeautifulSoup(html, 'html.parser')
         info = soup.find(class_='infobox vevent')

@@ -1,5 +1,7 @@
 output/
 *.shelve
+cache_version.json
+pages_cache.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

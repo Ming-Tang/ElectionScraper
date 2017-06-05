@@ -13,6 +13,7 @@ standard_schema = {
     "Riding": [
         ("riding_id", "str", "id"),
         ("riding_name", "str"),
+        ("province", "province"),
         ("start_year", "year"),
         ("end_year", "year"),
         ("population", "count"),
