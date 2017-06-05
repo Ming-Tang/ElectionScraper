@@ -29,11 +29,15 @@ col_types_CRE <- cols(
   delta_percent = col_number(),
   elected = col_logical()
 )
-P <- data.table(read_csv("Party.csv"))
-PB <- read_csv("ProvincialBreakdown.csv", col_types=col_types_PB)
-RE <- data.table(read_csv("RidingElection.csv", col_types=col_types_RE))
-PE <- data.table(read_csv("PartyElection.csv", col_types=col_types_PE))
-CRE <- data.table(read_csv("CandidateRidingElection.csv", col_types=col_types_CRE))
+
+path <- function(x) paste("../output/", x, sep="")
+
+P <- data.table(read_csv(path("Party.csv")))
+R <- data.table(read_csv(path("Riding.csv")))
+PB <- read_csv(path("ProvincialBreakdown.csv"), col_types=col_types_PB)
+RE <- data.table(read_csv(path("RidingElection.csv"), col_types=col_types_RE))
+PE <- data.table(read_csv(path("PartyElection.csv"), col_types=col_types_PE))
+CRE <- data.table(read_csv(path("CandidateRidingElection.csv"), col_types=col_types_CRE))
 
 PECRE <- PE[P[CRE[RE, on=c("re_id")], on=c("party_name")], on=c("party_name","election_id")]
 PECRE[,party_name := ifelse(party_name == "New Democratic Party", "New Democratic", party_name)]
