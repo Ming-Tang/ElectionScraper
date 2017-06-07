@@ -1,78 +1,40 @@
 import json
 import os
 import logging
+import atexit
 from wikipedia import page as page_1, PageError
 
+logger = logging.getLogger()
 filename = 'pages_cache.json'
-version_filename = 'cache_version.json'
+pages = None
 
-pages = {}
-version = -1
-
-
-class empty:
-    def __enter__(*args): logging.debug("empty.__enter__")
-    def __exit__(*args): logging.debug("empty.__exit__")
-
-
-lock = empty()
-
-
-def set_lock(lock1):
-    global lock
-    logging.debug("set_lock({!r})".format(lock1))
-    lock = lock1
-
-
-def writeback_pages():
+def save_pages():
     try:
-        open(filename, 'w').close()
-        with open(filename, 'w') as f: json.dump(pages, f, indent=2)
+        open(filename, 'w').close()  # clear file
+        with open(filename, 'w') as f: json.dump(pages.copy(), f, indent=2, sort_keys=True)
+        logging.info("wiki.save_pages: Saved pages to {!r}".format(filename))
     except KeyboardInterrupt:
-        writeback_pages()
+        save_pages()
 
 
-def writeback_version():
-    try:
-        open(version_filename, 'w').close()
-        with open(version_filename, 'w') as f: json.dump(version, f)
-    except KeyboardInterrupt:
-        writeback_version()
-
-
-def reload_version():
-    global version
-    try:
-        with open(version_filename) as f:
-            version = json.load(f)
-    except FileNotFoundError:
-        writeback_version()
-
-
-def init():
+def initialize_main(dict_object):
     global pages
+    pages = dict_object
 
-    logging.debug("init() len(keys)={}, version={}".format(len(pages), version))
     try:
-        with open(filename, 'r') as f: pages = json.load(f)
+        with open(filename, 'r') as f: pages.update(json.load(f))
+        logger.info("wiki.initialize_main(): Loaded pages from {!r}".format(filename))
+        atexit.register(save_pages)
     except FileNotFoundError:
-        writeback_pages()
-
-    reload_version()
-
-
-def refresh():
-    global version
-    version0 = version
-    reload_version()
-    if version > version0: init()
+        logger.info("wiki.initialize_main(): File not found.")
+    except json.JSONDecodeError:
+        logger.exception("JSONDecodeError")
 
 
-def write():
-    global version
-    writeback_pages()
-    version += 1
-    writeback_version()
+def initialize_sub(dict_object):
+    global pages
+    pages = dict_object
+    logger.debug("wiki.initialize_sub() called.")
 
 
 class Page:
@@ -85,21 +47,15 @@ class Page:
 
 def page(title, auto_suggest=True):
     global pages
+    assert pages is not None, "Not initialized."
     assert isinstance(title, str)
-    try:
-        with lock:
-            logging.debug("---{{{ lock acquired")
-            title1 = json.dumps([title, auto_suggest])
-            refresh()
+    title1 = json.dumps([title, auto_suggest])
 
-            if pages.get(title1, None) != None:
-                return Page(*pages[title1])
+    if pages.get(title1, None) != None:
+        return Page(*pages[title1])
 
-            logging.debug("cache miss {}".format(title1))
-            page = page_1(title, auto_suggest=auto_suggest)
-            pages[title1] = (page.html(), page.links, page.title)
-            write()
-            return Page(*pages[title1])
-    finally:
-        logging.debug("---}}} unlocked")
+    logging.debug("wiki.page: Cache miss: {!r}".format(title))
+    page = page_1(title, auto_suggest=auto_suggest)
+    pages[title1] = (page.html(), page.links, page.title)
+    return Page(*pages[title1])
 

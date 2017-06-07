@@ -190,11 +190,14 @@ class Heading:
 
 
 class DocumentOutline:
-    def __init__(self, soup):
-        assert isinstance(soup, BeautifulSoup)
-        self.soup = soup
+    def __init__(self, doc):
+        assert isinstance(doc, BeautifulSoup)
+        self.soup = doc
 
-        self.children = list(soup.children)
+        root = doc
+        root = doc.select('span.mw-headline')[0].parent.parent
+
+        self.children = list(root.children)
         self.children_hashes = [self._h(c) for c in self.children]
 
         self.descendants_list = [
@@ -204,7 +207,7 @@ class DocumentOutline:
         heading_by_index = [None for i in range(len(self.children))]
         headings = {}
         cur_heading = None
-        for i, child in enumerate(soup.children):
+        for i, child in enumerate(root.children):
             if isinstance(child, Tag) and child.name[0] == 'h':
                 try:
                     level = int(child.name[1:])
@@ -220,7 +223,6 @@ class DocumentOutline:
 
         self.heading_by_index = heading_by_index
         self.headings = headings
-
 
     def get_children(self, i):
         assert i in self.headings

@@ -26,11 +26,28 @@ def setup_logging():
 
     return logger
 
+
 logger = setup_logging()
+
+province_pages = {
+    'Ontario': 'ON',
+    'Quebec': 'QC',
+    'Nova Scotia': 'NS',
+    'New Brunswick': 'NB',
+    'Manitoba': 'MB',
+    'British Columbia': 'BC',
+    'Prince Edward Island': 'PE',
+    'Saskatchewan': 'SK',
+    'Alberta': 'AB',
+    'Newfoundland and Labrador': 'NL',
+    'Northwest Territories': 'NT',
+    'Yukon': 'YK',
+    'Nunavut': 'NU'
+}
 
 deltaPercent = '\u2206%'
 
-re_province = re.compile(r"^([^-]+)(\s*-\s*\d+\s+seats?)?$")
+re_province = re.compile("({})".format("|".join(province_pages.keys())))
 re_year = re.compile(r', (\d\d\d\d)')
 re_federal_election = re.compile(r'.*Canad(?:a|ian)\s+federal.*?((?:by-?)?)election.*?(?:(\w+)\s+([\w\d]+),?\s+)?(\d\d\d\d).*')
 re_electoral_district = re.compile(r'\(([a-zA-Z0-9\s]*)?electoral district\)')
@@ -210,21 +227,6 @@ def process_election_table(db, result_tbl, riding_id, source=None):
 
 
 def find_province(links):
-    province_pages = {
-        'Ontario': 'ON',
-        'Quebec': 'QC',
-        'Nova Scotia': 'NS',
-        'New Brunswick': 'NB',
-        'Manitoba': 'MB',
-        'British Columbia': 'BC',
-        'Prince Edward Island': 'PE',
-        'Saskatchewan': 'SK',
-        'Alberta': 'AB',
-        'Newfoundland and Labrador': 'NL',
-        'Northwest Territories': 'NT',
-        'Yukon': 'YK',
-        'Nunavut': 'NU'
-    }
     province_links = [(link, province_pages[link]) for link in links if link in province_pages]
     if len(province_links) > 1:
         logging.debug("Multiple provinces: {} {}".format(province_links, province_links[0][1]))
@@ -266,7 +268,7 @@ def find_geos(riding_page):
 
 
 def process_page(tup):
-    link_title, text, lock, counter, length = tup
+    link_title, text, lock, counter, length, dict1 = tup
     db = schema.make_standard_database()
     riding_page = wiki.page(title=link_title, auto_suggest=False)
     del link_title
@@ -299,9 +301,9 @@ def process_page(tup):
 
 
 def page_titles(link):
-    #logger.info(link)
     listing_page = wiki.page(title=link)
-    outline = DocumentOutline(BeautifulSoup(listing_page.html(), 'html.parser'))
+    doc = BeautifulSoup(listing_page.html(), 'html.parser')
+    outline = DocumentOutline(doc)
     logger.info(" - " + repr(link))
 
     items = outline.headings.items()
@@ -311,8 +313,9 @@ def page_titles(link):
 
         province = re_province.match(h.title)
         if province: province = province.group(1)
-        if province is None: print("    - " + str(h.title))
-        logger.info("    - " + province)
+        if province is not None:
+            logger.info("    - {}".format(province))
+
         #logger.info("    [{:3}/{:3}]: {}".format(idx, len(items), province))
 
         def gen():
@@ -334,10 +337,10 @@ def page_titles(link):
 
 
 def process_page_profiled(tup):
-    link_title, text, lock, counter, length = tup
-    wiki.set_lock(lock)
-    y = 0
-    res = None
+    link_title, text, lock, counter, length, dict1 = tup
+    y, res = 0, None
+    wiki.initialize_sub(dict1)
+
     with lock: y = counter.value
 
     if y == 42:
@@ -351,21 +354,23 @@ def process_page_profiled(tup):
 
 def main():
     pd.set_option('display.width', 700)
+    m = mp.Manager()
+    dict1 = m.dict()
+    wiki.initialize_main(dict1)
 
     parent_page = wiki.page(title="Historical federal electoral districts of Canada")
     links = [p for p in parent_page.links
-             if "List of Canadian" in p and "electoral districts" in p][::-1]
+             if "list of canadian" in p.lower() and "electoral districts" in p.lower()][::-1]
 
     links = list(set(it.chain.from_iterable(map(lambda link: list(page_titles(link)), links))))
     links.sort()
     with mp.Pool(processes=mp.cpu_count()) as pool:
-        m = mp.Manager()
         lock = m.Lock()
-        wiki.set_lock(lock)
         counter = m.Value('i', 0)
+
         results = pool.map(
             process_page_profiled,
-            [(l, t, lock, counter, len(links)) for l, t in links])
+            [(l, t, lock, counter, len(links), dict1) for l, t in links])
         #pool.terminate()
         #pool.join()
 
