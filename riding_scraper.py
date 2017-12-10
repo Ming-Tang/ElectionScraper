@@ -352,6 +352,7 @@ def process_page_profiled(tup):
     return res
 
 
+@wiki.ensure_save_pages
 def main():
     pd.set_option('display.width', 700)
     m = mp.Manager()

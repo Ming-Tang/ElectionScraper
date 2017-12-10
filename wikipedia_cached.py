@@ -1,20 +1,51 @@
 import json
 import os
 import logging
-import atexit
+#import atexit
+import time
+import functools
+import sys
 from wikipedia import page as page_1, PageError
 
 logger = logging.getLogger()
-filename = 'pages_cache.json'
+filename = 'output/pages_cache.json'
 pages = None
+
+if not os.path.exists('output/'):
+    os.makedirs('output/')
 
 def save_pages():
     try:
+        logging.info("wiki.save_pages(): Starting... number of pages = {!r}".format(len(pages)))
         open(filename, 'w').close()  # clear file
-        with open(filename, 'w') as f: json.dump(pages.copy(), f, indent=2, sort_keys=True)
-        logging.info("wiki.save_pages: Saved pages to {!r}".format(filename))
-    except KeyboardInterrupt:
+        with open(filename, 'w') as f:
+            json.dump(pages.copy(), f, indent=2, sort_keys=True)
+        logging.info("wiki.save_pages(): Saved pages to {!r}".format(filename))
+    except (BrokenPipeError, IOError):
+        logging.exception('wiki.save_pages(): BrokenPipeError')
+
+        time.sleep(0.5)
+        logging.exception("wiki.save_pages(): Failed")
         save_pages()
+    except KeyboardInterrupt:
+        sys.stdout.flush()
+        save_pages()
+    except:
+        time.sleep(0.5)
+        logging.exception("wiki.save_pages(): Failed")
+        save_pages()
+
+
+def ensure_save_pages(f):
+    @functools.wraps(f)
+    def g(*a, **ka):
+        try:
+            return f()
+        finally:
+            save_pages()
+
+    return g
+
 
 
 def initialize_main(dict_object):
@@ -22,13 +53,16 @@ def initialize_main(dict_object):
     pages = dict_object
 
     try:
+        if os.stat(filename).st_size == 0: os.unlink(filename)
         with open(filename, 'r') as f: pages.update(json.load(f))
         logger.info("wiki.initialize_main(): Loaded pages from {!r}".format(filename))
-        atexit.register(save_pages)
-    except FileNotFoundError:
-        logger.info("wiki.initialize_main(): File not found.")
+    except FileNotFoundError as e:
+        logger.info("wiki.initialize_main(): Cache is not present: {!r}".format(filename))
     except json.JSONDecodeError:
         logger.exception("JSONDecodeError")
+    finally:
+        pass
+        #atexit.register(save_pages)
 
 
 def initialize_sub(dict_object):

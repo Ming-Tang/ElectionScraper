@@ -43,6 +43,8 @@ def get_provincial_results(province_table, election_id):
         for k, v in provincial_results.items()
     }
 
+
+@wiki.ensure_save_pages
 def main():
     db = schema.make_standard_database()
 
