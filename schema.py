@@ -23,6 +23,15 @@ standard_schema = {
         ("electors_year", "year")
     ],
 
+    "RidingChange": [
+        ("rc_id", "str", "id"),
+        ("riding_id", "str", "Riding"),
+        ("linked_riding_id", "str", "Riding"),
+        ("prev_years", "str"),
+        ("next_years", "str"),
+        ("is_dissolved", "bool"),
+    ],
+
     "Party": [
         ("party_name", "str", "id"),
         ("colour", "str")
@@ -128,6 +137,17 @@ def make_re_id(election_id, riding_id):
     assert isinstance(election_id, str), election_id
     assert isinstance(riding_id, str), riding_id
     return "{}:{}".format(election_id, riding_id)
+
+
+def make_rc_id(riding_id, linked_riding_id, prev_years, next_years, is_dissolved):
+    assert isinstance(riding_id, str), riding_id
+    assert isinstance(linked_riding_id, str), riding_id
+    assert (prev_years is None or isinstance(prev_years, str)), prev_years
+    assert (next_years is None or isinstance(next_years, str)), next_years
+    assert isinstance(is_dissolved, bool), is_dissolved
+    return "{}:{}:{}:{}:{}".format(
+        riding_id, linked_riding_id, prev_years, next_years, is_dissolved)
+
 
 
 def make_cre_id(re_id, candidate_name, party_name):

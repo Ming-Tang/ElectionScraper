@@ -44,7 +44,6 @@ def get_provincial_results(province_table, election_id):
     }
 
 
-@wiki.ensure_save_pages
 def main():
     db = schema.make_standard_database()
 

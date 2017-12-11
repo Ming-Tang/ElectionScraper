@@ -1,5 +1,5 @@
 import pickle
-import json
+import ujson as json
 import pandas as pd
 
 with open("output/db.pickle", "rb") as f:

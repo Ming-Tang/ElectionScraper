@@ -1,7 +1,7 @@
-import json
+import ujson as json
 import os
 import logging
-#import atexit
+import atexit
 import time
 import functools
 import sys
@@ -61,8 +61,7 @@ def initialize_main(dict_object):
     except json.JSONDecodeError:
         logger.exception("JSONDecodeError")
     finally:
-        pass
-        #atexit.register(save_pages)
+        atexit.register(save_pages)
 
 
 def initialize_sub(dict_object):

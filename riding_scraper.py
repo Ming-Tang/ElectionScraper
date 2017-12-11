@@ -52,10 +52,50 @@ re_year = re.compile(r', (\d\d\d\d)')
 re_federal_election = re.compile(r'.*Canad(?:a|ian)\s+federal.*?((?:by-?)?)election.*?(?:(\w+)\s+([\w\d]+),?\s+)?(\d\d\d\d).*')
 re_electoral_district = re.compile(r'\(([a-zA-Z0-9\s]*)?electoral district\)')
 
-def filter_riding_page_title(page_title):
+
+def filter_dash(s):
     dash, dash1 = '\u2014', '\u2015'
-    page_title = page_title.replace(dash, "-").replace(dash1, "-")
-    return re_electoral_district.sub("", page_title).strip()
+    return s.replace(dash, "-").replace(dash1, "-")
+
+def filter_riding_page_title(page_title):
+    return re_electoral_district.sub("", filter_dash(page_title)).strip()
+
+
+def process_mps_table(db, result_tbl, riding_id, source=None):
+    tbl = Table(result_tbl, header_all=True)
+
+    if not tbl or not (tbl[0, 0] and 'Parliament' in tbl[0, 0].text):
+        return False
+
+    prev_years = None
+    items = []
+    prev_item = None
+
+    for i in range(1, tbl.n_rows):
+        text = tbl[i, 0].text.lower()
+
+        if tbl[i, 0].colspan > 1:
+            dissolved = 'dissolved' in text
+            links = list(a.attrs.get('title') for a in tbl[i, 0].elem.select('a'))
+            prev_item = [prev_years, None, dissolved, links]
+        else:
+            prev_years = tbl[i, 1].text
+            if prev_item:
+                prev_item[1] = tbl[i, 1].text
+                items.append(prev_item)
+
+    for item in items:
+        for linked_riding_id in item[3]:
+            args = dict(
+                riding_id=riding_id,
+                linked_riding_id=filter_riding_page_title(linked_riding_id),
+                prev_years=filter_dash(item[0]) if item[0] else None,
+                next_years=filter_dash(item[1]) if item[1] else None,
+                is_dissolved=item[2])
+            rc_id = schema.make_rc_id(**args)
+            db.declare("RidingChange", rc_id=rc_id, **args)
+
+    return True
 
 
 def process_election_table(db, result_tbl, riding_id, source=None):
@@ -282,7 +322,16 @@ def process_page(tup):
 
     tables = list(doc.select('table'))
     riding_id = filter_riding_page_title(riding_page.title)
+
     for result_tbl in tables:
+        ret = process_mps_table(
+            db=db,
+            result_tbl=result_tbl,
+            source=riding_page,
+            riding_id=riding_id)
+
+        if ret: continue
+
         process_election_table(
             db=db,
             result_tbl=result_tbl,
@@ -346,13 +395,13 @@ def process_page_profiled(tup):
     if y == 42:
         logger.info("Running profiler.")
         cProfile.runctx('process_page(tup)', globals(), locals(), 'output/profile.prof')
+        counter.value -= 1
 
     res = process_page(tup)
     assert res is not None, tup
     return res
 
 
-@wiki.ensure_save_pages
 def main():
     pd.set_option('display.width', 700)
     m = mp.Manager()

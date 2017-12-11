@@ -144,6 +144,12 @@ class Table:
     def __repr__(self):
         return "<Table n_rows={}, n_cols={}>".format(self.n_rows, self.n_cols)
 
+    def __bool__(self):
+        return bool(int(self.n_rows) * int(self.n_cols))
+
+    def __nonzero__(self):
+        return bool(int(self.n_rows) * int(self.n_cols))
+
     def transpose(self, to_s=True, indexed=True, transpose=False, header=None):
         f = (lambda x: x.text if x is not None else None) if to_s else (lambda x: x)
         d = {}
